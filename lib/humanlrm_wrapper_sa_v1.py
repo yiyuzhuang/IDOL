@@ -373,7 +373,7 @@ class SapiensGS_SA_v1(pl.LightningModule):
         
         return output
 
-    def forward_image_to_uv(self, inputs_img, is_training=True):
+    def forward_image_to_uv(self, inputs_img, is_training=True, low_ram=False):
         '''
             inputs_img: torch.Tensor, bs, 3, H, W
             return
@@ -385,10 +385,19 @@ class SapiensGS_SA_v1(pl.LightningModule):
         else:
             features_flatten =  self.encoder(inputs_img, use_my_proces=True, output_hidden_states=self.output_hidden_states) 
         
+        if low_ram:
+            del self.encoder
+            torch.cuda.empty_cache()
+
         if self.ids_restore.device !=features_flatten.device:
             self.ids_restore = self.ids_restore.to(features_flatten.device)
         ids_restore = self.ids_restore.expand([features_flatten.shape[0], -1])
         uv_code =  self.neck(features_flatten, ids_restore)
+
+        if low_ram:
+            del self.neck
+            torch.cuda.empty_cache()
+
         batch_size, token_num, dims_feature = uv_code.shape
         
         if self.reshape_type=='reshape':

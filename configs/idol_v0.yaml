@@ -37,8 +37,8 @@ model:
     encoder:
       target: lib.models.sapiens.SapiensWrapper_ts 
       params:
-        # model_path:   work_dirs/ckpt/sapiens_1b_epoch_173_torchscript.pt2
-        model_path: /apdcephfs_cq8/share_1367250/harriswen/projects/sapiens_convert/checkpoints//sapiens_1b_epoch_173_torchscript.pt2
+        model_path:   work_dirs/ckpt/sapiens_1b_epoch_173_torchscript.pt2
+        # model_path: /apdcephfs_cq8/share_1367250/harriswen/projects/sapiens_convert/checkpoints//sapiens_1b_epoch_173_torchscript.pt2
         layer_num: 40
         img_size: [1024, 736]
         freeze: True

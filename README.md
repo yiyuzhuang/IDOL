@@ -63,13 +63,13 @@ Please refer to [env/README.md](env/README.md) for detailed environment setup in
 Run demo with different modes:
 ```bash
 # Reconstruct the input image
-python run_demo.py --render_mode reconstruct
+python run_demo.py --render_mode reconstruct --low_ram
 
 # Generate novel poses (animation)
-python run_demo.py --render_mode novel_pose
+python run_demo.py --render_mode novel_pose --low_ram
 
 # Generate 360-degree view
-python run_demo.py --render_mode novel_pose_A
+python run_demo.py --render_mode novel_pose_A --low_ram
 ```
 
 ### Training

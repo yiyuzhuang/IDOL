@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 from einops import rearrange
 from lib.utils.infer_util import *
-from lib.utils.train_util import instantiate_from_config
+from lib.utils.train_util import *
 import torchvision
 import json
 ###############################################################################
@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument('--render_mode', type=str, default='novel_pose', 
                     choices=['novel_pose', 'reconstruct', 'novel_pose_A'],
                     help='Rendering mode: novel_pose (animation), reconstruct (reconstruction), or novel_pose_A (360-degree view with A-pose)')
+    parser.add_argument('--low_ram', action="store_true", default=False, help='Enabling this option reduces the inference VRAM requirement to 11GB.')
 
     return parser.parse_args()
 
@@ -193,13 +194,14 @@ def process_data_on_gpu(args, model, gpu_id, img_paths_list, smplx_ref_path_list
 
         with torch.no_grad():
             # get latents
-            code = model.forward_image_to_uv(sample, is_training=False)
+            code = model.forward_image_to_uv(sample, is_training=False, low_ram=args.low_ram)
+            torch.cuda.empty_cache()
 
         with torch.no_grad():
             output_list = []
-            num_imgs_batch = 5
+            num_imgs_batch = 3
             total_frames = min(smpl_params.shape[0],300)
-            res_uv = None
+            res_uv, res_points = None, None
             for i in tqdm(range(0, total_frames, num_imgs_batch)):
                 if i+num_imgs_batch > total_frames:
                     num_imgs_batch = total_frames - i
@@ -207,10 +209,10 @@ def process_data_on_gpu(args, model, gpu_id, img_paths_list, smplx_ref_path_list
                 # cameras_bt = cameras.expand(num_imgs_batch, -1, -1)
                 cameras_bt = cameras[i:i+num_imgs_batch]
 
-                if render_mode in ['reconstruct', 'novel_pose_A'] and res_uv is not None:
-                    pass 
-                else:
-                    res_uv = model.decoder._decode_feature(code_bt) # Decouple UV attributes
+                if render_mode == "novel_pose" or res_uv is None:
+                    del res_uv
+                    del res_points
+                    res_uv = model.decoder._decode_feature(code_bt, low_ram=args.low_ram) # Decouple UV attributes
                     res_points = model.decoder._sample_feature(res_uv) # Sampling
                 # Animate
                 res_def_points = model.decoder.deform_pcd(res_points, smpl_params[i:i+num_imgs_batch].to(code_bt.dtype), zeros_hands_off=True, value=0.02) 
@@ -219,7 +221,11 @@ def process_data_on_gpu(args, model, gpu_id, img_paths_list, smplx_ref_path_list
 
                 print("output shape ", output["image"][:, 0].shape)
                 output_list.append(image) # [:, 0] stands to get the all scenes (poses)
+
+                del res_def_points
                 del output
+                del image
+                torch.cuda.empty_cache()
 
             output = torch.concatenate(output_list, 0)
             frames = rearrange(output, "b h w c -> b c h w")#.cpu().numpy()
@@ -259,9 +265,10 @@ def main():
 
     resume_path =  args.resume_path
     # Initialize model
-    model = instantiate_from_config(model_config)
-    model.encoder = model.encoder.to(torch.bfloat16) ; print("moving encoder to bf16")
-    model = model.__class__.load_from_checkpoint(resume_path, **config.model.params)
+    # model = instantiate_from_config(model_config)
+    model_class = get_class_from_config(model_config)
+    model = model_class.load_from_checkpoint(resume_path, **config.model.params)
+    # model.encoder = model.encoder.to(torch.bfloat16) ; print("moving encoder to bf16")
     model = model.to(device)
     model = model.eval()
 

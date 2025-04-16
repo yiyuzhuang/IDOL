@@ -463,9 +463,36 @@ def save_video(
     output_path: str,
     fps: int = 30,
 ) -> None:
-    # images: (N, C, H, W)
-    frames = [(frame.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8) for frame in frames]
-    writer = imageio.get_writer(output_path, fps=fps)
-    for frame in frames:
-        writer.append_data(frame)
-    writer.close()
+    """
+    使用OpenCV保存视频（自动处理BGR到RGB转换）
+    
+    参数:
+        frames: 输入帧序列，形状为 (N, C, H, W) 的torch.Tensor
+        output_path: 输出视频路径
+        fps: 帧率（默认30）
+    """
+    # 检查输入张量维度
+    if frames.dim() != 4:
+        raise ValueError(f"输入frames应该是4D张量 (N, C, H, W)，但得到的是 {frames.dim()}D")
+    
+    # 转换为numpy数组并调整格式
+    frames_np = frames.permute(0, 2, 3, 1).cpu().numpy()  # (N, H, W, C)
+    frames_np = (frames_np * 255).astype(np.uint8)  # 转换为0-255范围
+    
+    # 获取视频尺寸
+    height, width = frames_np.shape[1:3]
+    
+    # 创建VideoWriter
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4编码
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    for frame in frames_np:
+        # OpenCV使用BGR格式，如果输入是RGB需要转换
+        if frame.shape[2] == 3:  # 仅当是彩色图像时转换
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        else:
+            frame_bgr = frame  # 灰度图像不转换
+        
+        writer.write(frame_bgr)
+    
+    writer.release()

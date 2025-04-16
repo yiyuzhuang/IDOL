@@ -207,7 +207,7 @@ class UVNDecoder_gender(nn.Module):
             self.register_buffer('outside_mask', outside_mask.unsqueeze(0), persistent=False)
 
         self.iter = 0
-        self.init_weights()
+        # self.init_weights()
         self.if_rotate_gaussian = False
         self.fix_sigma = fix_sigma
     def init_weights(self):
@@ -300,7 +300,7 @@ class UVNDecoder_gender(nn.Module):
 
         return sigma, rgbs, radius, rot, offset
 
-    def _decode_feature(self, point_code, init=False):
+    def _decode_feature(self, point_code, low_ram=False):
         if isinstance(point_code, list):
             num_scenes, _, h, w = point_code[0].shape
             geo_code, tex_code = point_code
@@ -318,14 +318,35 @@ class UVNDecoder_gender(nn.Module):
 
         base_in = geo_code if self.multires == 0 else torch.cat([geo_code, input_freq], dim=1)
         base_x = self.base_net(base_in)
-        base_x_act = self.base_activation(self.base_bn(base_x))
+        base_bn = self.base_bn(base_x)
+        
+        if low_ram:
+            del base_x
+            torch.cuda.empty_cache()
+
+        base_x_act = self.base_activation(base_bn)
+
+        if low_ram:
+            del base_bn
+            torch.cuda.empty_cache()
     
         sigma = self.density_net(base_x_act)
         offset = self.offset_net(base_x_act)
+
+        if low_ram:
+            del base_x_act
+            torch.cuda.empty_cache()
+
         color_in = tex_code if self.multires == 0 else torch.cat([tex_code, input_freq], dim=1)
         rgbs_radius_rot = self.color_net(color_in)
         
         outputs = torch.cat([sigma, offset, rgbs_radius_rot], dim=1)
+
+        if low_ram:
+            del color_in
+            del rgbs_radius_rot
+            torch.cuda.empty_cache()
+        
         main_print(outputs.shape)
         sigma, offset, rgbs, radius, rot = outputs.split([1, 3, 3, 3, 3], dim=1)
         results = {'output':outputs, 'sigma': sigma, 'offset': offset, 'rgbs': rgbs, 'radius': radius, 'rot': rot}
